@@ -1,0 +1,80 @@
+name: Android Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "可选：构建完成后用于 Release 的标签名（留空则仅上传 Artifact）"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Assemble Release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK platform 34
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Assemble release APK
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME:-manual}"
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          cp "$APK" "dist/AudioScript-${VERSION}.apk"
+          ls -lh dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: audioscript-apk-${{ github.ref_name }}
+          path: dist/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
+          body: |
+            AudioScript Android 自动构建（Release 构建沿用 debug 签名，可直接侧载安装）。
+
+            - 识别：sherpa-onnx 1.13 内置中英双语流式 Zipformer（本地）
+            - 翻译：ML Kit 本地翻译（首次下载模型后离线）
+            - 安装后需授权：录音、悬浮窗；系统声音另需一次「共享屏幕」授权
