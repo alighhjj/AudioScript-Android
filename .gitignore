@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# 签名文件（请勿提交）
+*.jks
+*.keystore
+keystore.properties
+
+# fetch-deps.sh 的临时下载目录
+.cache/
+
+# IDE / 系统
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
