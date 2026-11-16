@@ -22,19 +22,19 @@ class ModelCatalogTest {
         val builtin = ModelCatalog.builtinZhEn
         assertTrue(builtin.requiredInApk)
         assertNotNull(builtin.assetDir)
-        assertNull(builtin.langTagTokenId)
+        assertEquals(AsrPipeline.STREAMING, builtin.pipeline)
         assertFalse(builtin.downloadable)
     }
 
     @Test
-    fun `日文模型带语言标签与镜像兜底`() {
+    fun `日文模型走 VAD 离线管线并带镜像清单`() {
         val spec = ModelCatalog.japanese
 
-        assertEquals("ja-multi", spec.id)
-        assertEquals("models/asr-ja", spec.assetDir)
-        assertEquals(6, spec.langTagTokenId) // <JA>
-        assertNotNull(spec.archiveUrl)
-        assertEquals(64, spec.archiveSha256?.length)
+        assertEquals("ja-reazon", spec.id)
+        assertEquals("models/asr-ja-reazon", spec.assetDir)
+        assertEquals(AsrPipeline.VAD_OFFLINE, spec.pipeline)
+        assertNull(spec.archiveUrl)
+        assertTrue(spec.downloadable)
 
         assertNotNull(spec.mirrorBase)
         assertTrue(spec.mirrorBase!!.endsWith("/"))
@@ -44,9 +44,9 @@ class ModelCatalogTest {
         assertEquals(
             setOf(
                 "tokens.txt",
-                "encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
-                "decoder-epoch-75-avg-11-chunk-16-left-128.onnx",
-                "joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
+                "encoder-epoch-99-avg-1.int8.onnx",
+                "decoder-epoch-99-avg-1.onnx",
+                "joiner-epoch-99-avg-1.onnx",
             ),
             names,
         )
@@ -55,6 +55,7 @@ class ModelCatalogTest {
             assertEquals("sha256 长度", 64, file.sha256.length)
             assertTrue("${file.name} 的大小", file.bytes > 0L)
         }
+        assertEquals(spec.mirrorFiles.sumOf { it.bytes }, spec.downloadBytes)
 
         // 镜像文件名必须能被 ModelStore 识别出来（解压/下载后要能定位到模型）。
         spec.mirrorFiles

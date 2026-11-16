@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
                         if (src == ModelCatalog.LANG_JA &&
                             !ModelStore.isInstalled(this@MainActivity, ModelCatalog.japanese)
                         ) {
-                            Hub.setNotice("日文识别需要先下载日文模型，约 247 MB")
+                            Hub.setNotice("日文识别需要先下载日文模型，约 169 MB")
                             Hub.models.refresh()
                             showSettings = true
                         }

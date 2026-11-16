@@ -23,7 +23,7 @@ class AsrRunner(
     private val pcm: PcmReader,
     /** 引擎/采集中断时通知服务自己收摊，避免「通知栏还在、其实没在听」。 */
     private val onFatal: () -> Unit = {},
-) {
+) : CaptureRunner {
 
     private var worker: Thread? = null
 
@@ -32,14 +32,14 @@ class AsrRunner(
 
     private var recognizer: OnlineRecognizer? = null
 
-    fun start() {
+    override fun start() {
         if (running) return
         running = true
         Hub.setStatus(RunStatus.PREPARING)
         worker = Thread({ loop() }, "asr-runner").also { it.start() }
     }
 
-    fun stop() {
+    override fun stop() {
         running = false
         pcm.stop()
         worker?.interrupt()

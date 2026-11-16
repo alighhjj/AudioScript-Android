@@ -52,10 +52,12 @@ data class ModelInstallState(
 /**
  * 可下载识别模型的管理器。
  *
- * 官方模型是 tar.bz2：下载 → sha256 校验 → 解压（只保留四个模型文件）→ 原子替换目录。
- * GitHub 下不动时（国内很常见）退回 Hugging Face 镜像，按文件逐个下载并逐个校验 sha256。
+ * 模型有两种下载方式：
+ *  - 官方 tar.bz2：下载 → sha256 校验 → 解压（只保留四个模型文件）→ 原子替换目录；
+ *  - 镜像按文件下载：逐个下载并校验 sha256，适合 GitHub 下不动的网络。
  *
- * 状态放在 StateFlow 里，设置界面和启动前的检查都读这一份。
+ * 日文 ReazonSpeech 模型只配置了 hf-mirror 逐文件下载。状态放在 StateFlow 里，
+ * 设置界面和启动前的检查都读这一份。
  */
 class ModelManager(private val context: Context) {
 
@@ -138,13 +140,8 @@ class ModelManager(private val context: Context) {
                     }
                 }
 
-                val files = ModelStore.discoverFiles(tempDir)
+                ModelStore.discoverFiles(tempDir)
                     ?: throw IOException("模型文件不完整，请重试")
-
-                spec.langTagTokenId?.let { tokenId ->
-                    // 失败不阻塞安装：模型仍能加载，只是首帧退回 <blk> 上下文。
-                    JaModelPatch.apply(File(files.decoder), tokenId)
-                }
 
                 File(tempDir, ModelStore.MARKER).writeText(spec.id)
                 replaceDirectory(tempDir, ModelStore.modelDir(context, spec))

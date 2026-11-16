@@ -3,9 +3,8 @@ package com.looplooptech.audioscript.core
 /**
  * 可用的识别模型。
  *
- * 内置模型继续跟随桌面端（中英混说 Zipformer）；日文没有官方流式单语模型，
- * 这里选用 sherpa-onnx 官方发布的 8 语种流式 Zipformer（含日语），
- * 以「按需下载」的方式提供，避免 APK 体积直接翻倍。
+ * 中英继续用内置的流式 Zipformer；日文改用 ReazonSpeech 单语离线模型，
+ * 由 VAD 切句后整段解码（sherpa-onnx 官方的 simulate-streaming 方案）。
  *
  * 选择哪个模型由「源语言」决定：ja → [ModelCatalog.japanese]，其余 → 内置中英模型。
  */
@@ -15,6 +14,12 @@ enum class ModelSource {
 
     /** 下载后解压到 filesDir。 */
     FILE,
+}
+
+/** 识别管线：流式解码，还是 VAD 切句 + 离线整段解码。 */
+enum class AsrPipeline {
+    STREAMING,
+    VAD_OFFLINE,
 }
 
 data class AsrModelSpec(
@@ -28,19 +33,14 @@ data class AsrModelSpec(
     val archiveUrl: String? = null,
     val archiveSha256: String? = null,
     val downloadBytes: Long = 0L,
-    /**
-     * 多语种模型的首帧语言标签 token id；null 表示不需要。
-     *
-     * 这类模型训练时把 `<SOS>` 换成了 `<JA>` 之类的标签，而 sherpa-onnx 只会用 `<blk>` 起头；
-     * 安装时由 [JaModelPatch] 把 `<blk>` 的 embedding 换成该 token。
-     */
-    val langTagTokenId: Int? = null,
-    /** 镜像目录；archiveUrl 下载失败时按 [mirrorFiles] 逐个下载。 */
+    /** 用哪条识别管线；日文离线模型需要 VAD 切句。 */
+    val pipeline: AsrPipeline = AsrPipeline.STREAMING,
+    /** 镜像目录；[archiveUrl] 下载失败时按 [mirrorFiles] 逐个下载。 */
     val mirrorBase: String? = null,
     val mirrorFiles: List<ModelFileSpec> = emptyList(),
     val note: String = "",
 ) {
-    val downloadable: Boolean get() = archiveUrl != null
+    val downloadable: Boolean get() = archiveUrl != null || mirrorFiles.isNotEmpty()
 }
 
 /** 镜像里的单个模型文件；[sha256] 非空时逐个校验。 */
@@ -66,49 +66,47 @@ object ModelCatalog {
     )
 
     /**
-     * sherpa-onnx 官方 8 语种流式模型：ar / en / id / ja / ru / th / vi / zh。
-     * 下载地址与 sha256 来自 release `asr-models`，文件名见 [archiveUrl]。
+     * ReazonSpeech 日本語 Zipformer（35k 小时日语数据），sherpa-onnx 官方发布的离线模型。
      *
-     * 该模型来自 PengChengStarling，训练时用 `<JA>` 替换 `<SOS>` 来指定语种；
-     * sherpa-onnx 不支持指定语言标签，所以安装后由 [JaModelPatch] 补齐首帧上下文。
+     * 这台机器跑不动 296 MB 的 8 语种流式模型：解码速度低于实时速度，录音缓冲持续溢出，
+     * 表现就是字幕过一会儿就不动了。单语离线模型 encoder 只有 154 MB，配合 Silero VAD
+     * 按句切分后整段解码，CPU 和内存都低一个量级。
+     *
+     * 官方 .tar.bz2 放在 GitHub release 上，国内基本下不动，所以只走 hf-mirror 逐文件下载，
+     * 四个文件各自校验 sha256。
      */
     val japanese = AsrModelSpec(
-        id = "ja-multi",
-        label = "日本語 · 8 语种流式 Zipformer",
-        languages = listOf(LANG_JA, LANG_ZH, LANG_EN, "ru", "ar", "id", "th", "vi"),
-        assetDir = "models/asr-ja",
-        archiveUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/" +
-            "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10.tar.bz2",
-        archiveSha256 = "28044b67324f7f831689f0a3761473dd2ade380e93aa53f1dbcd479ef71c40d4",
-        downloadBytes = 247_000_000L,
-        // <JA> 在 tokens.txt 里的 id；见 core/JaModelPatch.kt
-        langTagTokenId = 6,
-        // GitHub 大文件在国内经常下不动，退回镜像按文件下载（sha256 来自 HF 的 lfs.oid）。
-        mirrorBase = "https://hf-mirror.com/csukuangfj/" +
-            "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/resolve/main/",
+        id = "ja-reazon",
+        label = "日本語 · ReazonSpeech Zipformer",
+        languages = listOf(LANG_JA),
+        assetDir = "models/asr-ja-reazon",
+        downloadBytes = 177_203_844L,
+        pipeline = AsrPipeline.VAD_OFFLINE,
+        mirrorBase = "https://hf-mirror.com/DeL-TaiseiOzaki/" +
+            "sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01/resolve/main/",
         mirrorFiles = listOf(
             ModelFileSpec(
                 name = "tokens.txt",
-                sha256 = "784f24950f6bcce1b0021035632dd60fd4617ecd8ca0581ab57d7b39d77ba5ab",
-                bytes = 195_244L,
+                sha256 = "2c3ac659818a48a0c04010e0593bbc4d7c8a24a054340b01131499c05fd52def",
+                bytes = 45_754L,
             ),
             ModelFileSpec(
-                name = "encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
-                sha256 = "f9001ed7a9e46d0294438c1a30cd7c72d1cc4bdd4e7880edbcda36f67081e32e",
-                bytes = 296_583_597L,
+                name = "encoder-epoch-99-avg-1.int8.onnx",
+                sha256 = "2c7bd08a8a99f9ddd0d9e458456577b1f6279214e51426f114f9eced44c54e1d",
+                bytes = 154_670_139L,
             ),
             ModelFileSpec(
-                name = "decoder-epoch-75-avg-11-chunk-16-left-128.onnx",
-                sha256 = "7ebc63f34b21c8efb4a41a5a2eee7fe1448829ce0230ecc5369e67fc14d90d48",
-                bytes = 33_837_085L,
+                name = "decoder-epoch-99-avg-1.onnx",
+                sha256 = "58b18211ae06265466bfa17172dab574df94f76c8bcb61a3640c28ba860e4124",
+                bytes = 11_767_836L,
             ),
             ModelFileSpec(
-                name = "joiner-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
-                sha256 = "db88e3172323551abaa99b91b18fb422a27ea4a834fd0db10389f9478816f917",
-                bytes = 8_257_421L,
+                name = "joiner-epoch-99-avg-1.onnx",
+                sha256 = "d38a81d1191c9ed6de6a1719503692e07e3e973e2364adde0abae5eaaded1174",
+                bytes = 10_720_115L,
             ),
         ),
-        note = "日文流式识别，同时覆盖中英等 8 种语言；下载后离线使用",
+        note = "日文专用离线模型：VAD 切句后整段解码，下载后完全离线",
     )
 
     val downloadable: List<AsrModelSpec> = listOf(japanese)

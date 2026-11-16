@@ -7,8 +7,8 @@ import java.io.File
  * 模型文件定位。
  *
  * 两种来源：
- *  - assets 内置：`OnlineRecognizer(assetManager, config)`，路径必须是 assets 相对路径；
- *  - 下载安装：`OnlineRecognizer(config = config)`，路径是 filesDir 下的绝对路径。
+ *  - assets 内置：识别器用 `assetManager` 加载，路径必须是 assets 相对路径；
+ *  - 下载安装：识别器用 `config = config` 加载，路径是 filesDir 下的绝对路径。
  *
  * 下载模型统一放在 `filesDir/asr/<model-id>/`，全部文件就位后才写入 `.complete`，
  * 避免识别线程加载到解压到一半的模型。

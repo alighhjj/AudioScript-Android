@@ -142,7 +142,7 @@ fun SettingsSheet(
             Spacer(Modifier.height(20.dp))
             SectionTitle(Copy.ModelTitle)
             Text(
-                "识别模型由「源语言」自动选择：中文 / English 用内置模型；日本語 用可下载模型。",
+                "识别模型由「源语言」自动选择：中文 / English 用内置模型；日本語 用可下载的离线模型（VAD 切句）。",
                 color = Palette.Ink1,
                 fontSize = 12.sp,
                 lineHeight = 18.sp,

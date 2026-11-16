@@ -1,5 +1,3 @@
-import org.gradle.api.tasks.testing.Test
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -14,8 +12,8 @@ android {
         applicationId = "com.looplooptech.audioscript"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.7.2-android.1"
+        versionCode = 3
+        versionName = "0.7.3-android.1"
 
         // 只打包手机真实在用的 ABI：sherpa-onnx 的 x86/x86_64 是给模拟器用的，
         // 带上会让 APK 多出 70 MB 以上。
@@ -91,20 +89,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
-    // 下载的官方模型是 tar.bz2；Android 只带 gzip/zip，需要 bzip2 + tar。
+    // ModelManager 支持官方 tar.bz2 归档；Android 只带 gzip/zip，需要 bzip2 + tar。
     implementation("org.apache.commons:commons-compress:1.26.2")
 
     // 离线翻译：ML Kit 本地翻译模型（首次下载后完全离线推理）
     implementation("com.google.mlkit:translate:17.0.3")
 
     testImplementation("junit:junit:4.13.2")
-}
-
-// CI 校验日文语言标签补丁时，用 -PjaDecoder=<path> 把真实 decoder 传给单测。
-// 本地不传该参数时，JaModelPatchTest 只用合成的 ONNX 跑逻辑校验。
-val jaDecoderPath = providers.gradleProperty("jaDecoder").orNull
-tasks.withType<Test>().configureEach {
-    if (jaDecoderPath != null) {
-        systemProperty("ja.decoder.path", jaDecoderPath)
-    }
 }

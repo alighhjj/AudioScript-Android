@@ -10,11 +10,7 @@ on:
         description: "可选：构建完成后用于 Release 的标签名（留空则仅上传 Artifact）"
         required: false
       bundle_ja_model:
-        description: "把日文模型打进 APK（+339 MB，首启即用，产物名带 -ja 后缀）"
-        type: boolean
-        default: false
-      verify_ja_patch:
-        description: "下载真实日文 decoder，校验语言标签补丁（多花几分钟）"
+        description: "把日文离线模型打进 APK（+169 MB，首启即用，产物名带 -ja 后缀）"
         type: boolean
         default: false
 
@@ -63,30 +59,10 @@ jobs:
           echo "--- 已安装 ---"
           ls "$SDK/platforms" "$SDK/build-tools"
 
-      # GitHub release 在国内经常下不动，这里直接从 hf-mirror 取（33 MB）。
-      # sha256 与 ModelCatalog.japanese.mirrorFiles 里的一致。
-      - name: Download Japanese decoder
-        if: inputs.verify_ja_patch
-        env:
-          DECODER_URL: https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10/resolve/main/decoder-epoch-75-avg-11-chunk-16-left-128.onnx
-          DECODER_SHA: 7ebc63f34b21c8efb4a41a5a2eee7fe1448829ce0230ecc5369e67fc14d90d48
-        run: |
-          OUT="$RUNNER_TEMP/ja-decoder.onnx"
-          curl -fL --retry 3 --retry-delay 2 -o "$OUT" "$DECODER_URL"
-          echo "$DECODER_SHA  $OUT" | sha256sum -c -
-          echo "JA_DECODER=$OUT" >> "$GITHUB_ENV"
-          ls -lh "$OUT"
-
       - name: Unit tests
-        run: |
-          if [ -n "${JA_DECODER:-}" ]; then
-            echo "校验真实 decoder：$JA_DECODER"
-            ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace -PjaDecoder="$JA_DECODER"
-          else
-            ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
-          fi
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
-      # 勾选 bundle_ja_model 时，构建前把日文模型放进 assets（脚本同时打语言标签补丁）。
+      # 勾选 bundle_ja_model 时，构建前把日文离线模型放进 assets。
       - name: Bundle Japanese model
         if: inputs.bundle_ja_model
         run: bash scripts/fetch-ja-model.sh
@@ -126,5 +102,6 @@ jobs:
             AudioScript Android 自动构建（Release 构建沿用 debug 签名，可直接侧载安装）。
 
             - 识别：sherpa-onnx 1.13 内置中英双语流式 Zipformer（本地）
+            - 日文：ReazonSpeech 日本語 Zipformer + Silero VAD（设置里按需下载，离线可用）
             - 翻译：ML Kit 本地翻译（首次下载模型后离线）
             - 安装后需授权：录音、悬浮窗；系统声音另需一次「共享屏幕」授权

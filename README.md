@@ -12,8 +12,8 @@
 | 系统声音采集 | Core Audio Process Tap / WASAPI loopback | `AudioPlaybackCapture`（需一次录屏授权） |
 | 麦克风采集 | flexaudio / cpal | `AudioRecord` |
 | 识别引擎 | `sherpa-onnx` 1.13 (Rust) | `sherpa-onnx` 1.13 (官方 AAR，同一推理引擎) |
-| 识别模型 | `streaming-zipformer-small-bilingual-zh-en-2023-02-16` | 中文 / English 用**同一份模型**（int8 encoder/joiner + fp32 decoder，随 APK 内置）；日本語 用可下载的 8 语种流式 Zipformer |
-| 断句 | greedy_search + 端点检测，rule1 = 2.4 s | 同参数；rule2/rule3 跟随「口译 / 听写」档位 |
+| 识别模型 | `streaming-zipformer-small-bilingual-zh-en-2023-02-16` | 中文 / English 用**同一份模型**（int8 encoder/joiner + fp32 decoder，随 APK 内置）；日本語 用可下载的 ReazonSpeech 单语离线模型 |
+| 断句 | greedy_search + 端点检测，rule1 = 2.4 s | 中英同参数；日文用 Silero VAD 静音切句（0.4 s）后整段解码 |
 | 翻译 | CTranslate2 + Opus-MT | ML Kit 本地翻译模型（CTranslate2 没有 Android 版本） |
 | 悬浮字幕 | NSPanel 置顶窗口，锁定穿透 | `TYPE_APPLICATION_OVERLAY`，锁定后 `FLAG_NOT_TOUCHABLE` |
 | 导出 | Markdown（时间戳 + 原文译文成对） | 同格式，走系统分享 |
@@ -21,8 +21,8 @@
 
 ## 已实现
 
-- 系统声音 / 麦克风两种音源，实时 partial 刷新 + 句末定稿
-- 源语言支持中文 / English / 日本語：日文模型在设置里按需下载（约 247 MB），下载后完全离线
+- 系统声音 / 麦克风两种音源；中英实时 partial 刷新 + 句末定稿，日文 VAD 切句后整句定稿
+- 源语言支持中文 / English / 日本語：日文模型在设置里按需下载（约 169 MB），下载后完全离线
 - 双语悬浮字幕：字号、背景不透明度、行数、边框、锁定穿透、可拖动并记住位置
 - 本机翻译（中 / 英 / 日 → 16 种目标语言），失败自动降级为「只显示原文」
 - 定稿段落导出 Markdown 并分享
@@ -30,20 +30,25 @@
 
 ## 日文识别模型
 
-日文没有桌面端使用的同系列单语流式模型，这里接入 sherpa-onnx 官方发布的
-`streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10`（含日语，同时覆盖中英等 8 种语言）：
+日文使用 sherpa-onnx 官方发布的 **ReazonSpeech 日本語 Zipformer**（35k 小时日语数据）离线模型，
+配合 Silero VAD 切句后整段解码，也就是官方的 simulate-streaming 方案。
+
+之前用的 8 语种流式模型 encoder 有 296 MB，在这类 8 核手机上解码速度低于实时速度，
+录音缓冲持续溢出，表现就是「字幕过一会儿就不动了」；换成单语离线模型后 encoder 降到 154 MB，
+而且耗 CPU 的解码放在独立线程，读音频不会被堵住。
 
 - 运行路径：`设置 → 模型 → 下载`，下载完成后把「源语言」切到「日本語」即可
-- 下载约 247 MB（tar.bz2），应用内校验 sha256，只解压 encoder / decoder / joiner / tokens
-- 网络兜底：GitHub release 下不动时自动改用 hf-mirror 逐个文件下载（四个文件各自校验 sha256，共约 339 MB）
-- 存放位置 `filesDir/asr/ja-multi/`，可随时在设置里删除；识别线程通过 `OnlineRecognizer(config)` 直接读文件
+- 下载约 169 MB（4 个文件），逐个校验 sha256；走 hf-mirror（GitHub release 在国内基本下不动）
+- 存放位置 `filesDir/asr/ja-reazon/`，可随时在设置里删除；识别线程通过 `OfflineRecognizer(config)` 直接读文件
 - 不下载也不影响中英识别；APK 体积不变
-- 语言标签补丁：这个模型来自 PengChengStarling，训练时用 `<JA>` 替换 `<SOS>` 来指定语种，而 sherpa-onnx 只把 `<blk>` 当首帧上下文（上游明确说明不支持语言标签）。安装时 `core/JaModelPatch.kt` 会把 decoder embedding 里 `<blk>` 那一行原地换成 `<JA>`，让首帧上下文回到训练时的样子；补丁失败会自动保留原文件，不影响加载
+- 出字幕时机：一句话说完（静音 0.4 s）后整句上屏；连续说话时 VAD 会在 10 s 后收紧阈值强制断句
+- VAD 模型 `silero_vad.onnx`（1.8 MB）随 APK 内置，路径 `assets/models/vad/`
+- 解码跟不上时丢弃最旧的一句并在界面提示，不会静默停住
 
 如果希望做「首启即用」的完整安装包，可以构建前把模型放进 assets：
 
 ```bash
-bash scripts/fetch-ja-model.sh   # 拉取并解压到 app/src/main/assets/models/asr-ja（同时打好语言标签补丁）
+bash scripts/fetch-ja-model.sh   # 拉取到 app/src/main/assets/models/asr-ja-reazon
 ./gradlew :app:assembleDebug     # APK 会增大，设置里显示「已内置」
 ```
 
@@ -52,17 +57,18 @@ bash scripts/fetch-ja-model.sh   # 拉取并解压到 app/src/main/assets/models
 日文模型放在应用私有目录，路径固定为：
 
 ```
-/data/data/com.looplooptech.audioscript/files/asr/ja-multi/
+/data/data/com.looplooptech.audioscript/files/asr/ja-reazon/
 ```
 
-需要 4 个文件（同一层，文件名保持原样即可）+ 一个空的 `.complete` 标记，且文件属主必须是应用 uid。在 Termux 里以普通用户运行（不要加 `su`，脚本会自己调用）：
+需要 4 个文件（同一层，文件名保持原样）+ 一个空的 `.complete` 标记，且文件属主必须是应用 uid。在 Termux 里以普通用户运行（不要加 `su`，脚本会自己调用）：
 
 ```bash
-bash scripts/install-ja-model.sh /sdcard/Download/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10.tar.bz2
-# 也可以传已经解压的目录
+bash scripts/install-ja-model.sh                       # 从 hf-mirror 下载并安装
+bash scripts/install-ja-model.sh /sdcard/Download/模型目录
+bash scripts/install-ja-model.sh sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01.tar.bz2
 ```
 
-脚本会校验 sha256、给 decoder 打语言标签补丁、复制文件、改成应用 uid 并写入 `.complete`；`/sdcard` 读不到时会先用 `su` 复制一份到临时目录。装完重开应用，「设置 → 模型」会显示「已安装」，不需要重新编译或重装 APK。
+脚本会校验 4 个文件的 sha256、复制文件、改成应用 uid 并写入 `.complete`；`/sdcard` 读不到时会先用 `su` 复制一份到临时目录。装完重开应用，「设置 → 模型」会显示「已安装」，不需要重新编译或重装 APK。
 
 ### 用 CI 构建与校验
 
@@ -71,19 +77,10 @@ bash scripts/install-ja-model.sh /sdcard/Download/sherpa-onnx-streaming-zipforme
 | 选项 | 作用 |
 | --- | --- |
 | `bundle_ja_model` | 构建前先跑 `scripts/fetch-ja-model.sh`，把日文模型打进 APK，产物名带 `-ja` 后缀 |
-| `verify_ja_patch` | 从 hf-mirror 下载真实的日文 decoder、校验 sha256，再跑 `JaModelPatchTest` 核对补丁结果 |
 
 默认每次都会跑 `:app:testDebugUnitTest`：
 
-- `JaModelPatchTest`：用合成的 ONNX 覆盖「把 `<blk>` 行换成 `<JA>` 行、其余字节不变、文件长度不变」，以及缺少张量 / token 越界 / 文件损坏时不改文件
-- `ModelCatalogTest`：检查源语言 → 模型的选择、内置模型约束、日文模型的下载地址 / 镜像清单 / sha256
-- 勾选 `verify_ja_patch` 后，额外断言真实 decoder 打补丁后的 sha256 为 `1d822929242004647cd9c41881599c52918254a8dbfd502933f9b20b61c962a2`
-
-如果需要在本机复现完整校验（装了 JDK 17 与 Android SDK 时），把 decoder 路径传给 Gradle 即可：
-
-```bash
-./gradlew :app:testDebugUnitTest -PjaDecoder=/path/to/decoder-epoch-75-avg-11-chunk-16-left-128.onnx
-```
+- `ModelCatalogTest`：检查源语言 → 模型的选择、内置模型约束、日文模型的 VAD 管线 / 镜像清单 / sha256
 
 ## 尚未移植
 
@@ -113,8 +110,9 @@ bash scripts/fetch-deps.sh   # 拉 AAR + 识别模型，约 40 MB
 | --- | --- | --- |
 | `app/libs/sherpa-onnx-1.13.0.aar` | 54 MB | 官方 Android 预编译包，含 arm64-v8a / armeabi-v7a JNI 库 |
 | `app/src/main/assets/models/asr/*.onnx` | 55 MB | 双语流式 Zipformer，int8 encoder/joiner + fp32 decoder |
+| `app/src/main/assets/models/vad/silero_vad.onnx` | 1.8 MB | 日文识别用的 Silero VAD，随包内置 |
 
-日文模型默认不随包内置，由应用运行时下载；构建时另外引入 `org.apache.commons:commons-compress` 负责解压官方 tar.bz2。
+日文模型默认不随包内置，由应用运行时按文件下载；`silero_vad.onnx` 随 APK 内置。`ModelManager` 仍保留 tar.bz2 解压能力（`commons-compress`），供以后接入其他官方归档模型时使用。
 
 模型必须用 `Stored`（不压缩）方式进 APK，否则 native 层无法 mmap；`app/build.gradle.kts` 里的 `androidResources { noCompress += "onnx" }` 就是干这个的，别删。
 
@@ -126,7 +124,7 @@ bash scripts/fetch-deps.sh   # 拉 AAR + 识别模型，约 40 MB
 
 ## 许可
 
-原项目 MIT。内置中英模型 Apache-2.0；日文 8 语种模型来自 sherpa-onnx 官方发布（见模型包内许可）；ML Kit 本地翻译模型受 Google 条款约束。
+原项目 MIT。内置中英模型 Apache-2.0；日文 ReazonSpeech 模型来自 sherpa-onnx 官方发布（Apache-2.0）；ML Kit 本地翻译模型受 Google 条款约束。
 
 ## 预编译产物
 

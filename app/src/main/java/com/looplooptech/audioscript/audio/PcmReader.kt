@@ -130,7 +130,7 @@ object AudioCaptureFactory {
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
         ).coerceAtLeast(2048)
-        // 至少能装下 200 ms，避免读块时 underrun
-        return maxOf(min * 4, sampleRate * 2 / 5)
+        // 至少能装下 1 秒：解码偶尔卡一下（GC、模型换页）时也不至于被 AudioFlinger 丢帧。
+        return maxOf(min * 4, sampleRate * 2)
     }
 }

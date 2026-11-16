@@ -19,9 +19,13 @@ import androidx.core.content.IntentCompat
 import com.looplooptech.audioscript.MainActivity
 import com.looplooptech.audioscript.R
 import com.looplooptech.audioscript.asr.AsrRunner
+import com.looplooptech.audioscript.asr.CaptureRunner
+import com.looplooptech.audioscript.asr.VadAsrRunner
 import com.looplooptech.audioscript.audio.AudioCaptureFactory
 import com.looplooptech.audioscript.audio.PcmReader
+import com.looplooptech.audioscript.core.AsrPipeline
 import com.looplooptech.audioscript.core.Hub
+import com.looplooptech.audioscript.core.ModelCatalog
 import com.looplooptech.audioscript.core.SourceKind
 
 /**
@@ -33,7 +37,7 @@ import com.looplooptech.audioscript.core.SourceKind
  */
 class CaptureService : Service() {
 
-    private var runner: AsrRunner? = null
+    private var runner: CaptureRunner? = null
     private var reader: PcmReader? = null
     private var projection: MediaProjection? = null
     private var projectionCallback: MediaProjection.Callback? = null
@@ -122,7 +126,13 @@ class CaptureService : Service() {
         Hub.onRunning(kind)
         Hub.setStatus(com.looplooptech.audioscript.core.RunStatus.PREPARING)
 
-        val asrRunner = AsrRunner(applicationContext, pcmReader) { stopOnMainThread() }
+        // 日文走 VAD 切句 + 离线整段解码；中英继续用流式模型。
+        val spec = ModelCatalog.forLanguage(Hub.settings.current.sourceLang)
+        val asrRunner: CaptureRunner = if (spec.pipeline == AsrPipeline.VAD_OFFLINE) {
+            VadAsrRunner(applicationContext, pcmReader) { stopOnMainThread() }
+        } else {
+            AsrRunner(applicationContext, pcmReader) { stopOnMainThread() }
+        }
         runner = asrRunner
         asrRunner.start()
     }

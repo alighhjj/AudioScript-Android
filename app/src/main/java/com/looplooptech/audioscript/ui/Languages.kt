@@ -4,7 +4,7 @@ package com.looplooptech.audioscript.ui
  * 语言列表。
  *
  * 「源语言」决定识别模型：中文 / English 用内置中英混说模型，日本語 用可下载的
- * 8 语种流式模型（见 [com.looplooptech.audioscript.core.ModelCatalog]）。
+ * ReazonSpeech 单语离线模型（见 [com.looplooptech.audioscript.core.ModelCatalog]）。
  * 「目标语言」跟随 ML Kit 本地翻译支持的语言。
  */
 object Languages {
