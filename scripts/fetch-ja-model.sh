@@ -73,75 +73,9 @@ rm -rf "$TMP"
 # 与运行时的 core/JaModelPatch.kt 做同一件事：把 embedding 第 0 行换成第 6 行（<JA>）。
 if command -v python3 >/dev/null 2>&1; then
   echo "==> 写入日文语言标签（<blk> embedding → <JA>）"
-  python3 - "$DEST" <<'PY'
-import glob, os, sys
-
-LANG_ID = 6
-TENSOR = b"decoder.embedding.weight"
-
-def varint(b, i):
-    r = s = 0
-    while True:
-        c = b[i]; i += 1
-        r |= (c & 0x7F) << s
-        if not c & 0x80:
-            return r, i
-        s += 7
-
-def fields(b, start, end):
-    i = start
-    while i < end:
-        key, i = varint(b, i)
-        f, w = key >> 3, key & 7
-        if w == 0:
-            v, i = varint(b, i); yield f, w, v, i, i
-        elif w == 2:
-            n, i = varint(b, i); yield f, w, (i, i + n), i, i + n; i += n
-        elif w == 5:
-            yield f, w, None, i, i + 4; i += 4
-        elif w == 1:
-            yield f, w, None, i, i + 8; i += 8
-        else:
-            raise ValueError(w)
-
-def patch(path):
-    buf = bytearray(open(path, "rb").read())
-    graph = next((v for f, w, v, s, e in fields(buf, 0, len(buf)) if f == 7), None)
-    if graph is None:
-        return False
-    for f, w, v, s, e in fields(buf, graph[0], graph[1]):
-        if f != 5:
-            continue
-        name, dims, raw = b"", [], None
-        for f2, w2, v2, s2, e2 in fields(buf, v[0], v[1]):
-            if f2 == 1:
-                if w2 == 0:
-                    dims.append(v2)
-                else:
-                    j = s2
-                    while j < e2:
-                        x, j = varint(buf, j); dims.append(x)
-            elif f2 == 8:
-                name = bytes(buf[s2:e2])
-            elif f2 == 9:
-                raw = (s2, e2)
-        if name != TENSOR or raw is None or len(dims) != 2:
-            continue
-        rows, cols = dims
-        row = cols * 4
-        if raw[1] - raw[0] != rows * row:
-            continue
-        base = raw[0]
-        buf[base:base + row] = buf[base + LANG_ID * row:base + (LANG_ID + 1) * row]
-        open(path, "wb").write(buf)
-        return True
-    return False
-
-ok = [p for p in glob.glob(os.path.join(sys.argv[1], "decoder*.onnx")) if patch(p)]
-if not ok:
-    sys.exit("没有找到 decoder.embedding.weight，语言标签补丁失败")
-print("    patched:", ", ".join(os.path.basename(p) for p in ok))
-PY
+  for decoder in "$DEST"/decoder*.onnx; do
+    python3 "$ROOT/scripts/patch-ja-decoder.py" "$decoder"
+  done
 else
   echo "! 没有 python3，跳过语言标签补丁；日文识别质量会略低于预期" >&2
 fi
