@@ -117,7 +117,7 @@ object ModelStore {
             encoder = "$prefix$encoder",
             decoder = "$prefix$decoder",
             joiner = "$prefix$joiner",
-            tokens = "$prefix$tokens.txt",
+            tokens = prefix + "tokens.txt",
             source = source,
         )
     }
