@@ -1,6 +1,8 @@
 package com.looplooptech.audioscript.asr
 
 import android.content.Context
+import android.os.SystemClock
+import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.SpeechSegment
@@ -86,6 +88,7 @@ class VadAsrRunner(
             )
             val v = Vad(assetManager = context.assets, config = config)
             vad = v
+            Log.i(TAG, "VAD 已加载：$VAD_ASSET")
 
             var emptyReads = 0
             while (running) {
@@ -139,6 +142,7 @@ class VadAsrRunner(
     private fun noteDrop() {
         if (droppedOnce) return
         droppedOnce = true
+        Log.w(TAG, "解码队列已满，丢弃最旧的一段")
         Hub.setNotice("识别速度跟不上，已跳过一段音频")
     }
 
@@ -159,6 +163,7 @@ class VadAsrRunner(
             val rec = RecognizerFactory.createOffline(context, files)
             recognizer = rec
             Hub.setStatus(RunStatus.RUNNING)
+            Log.i(TAG, "识别器已加载：${files.source} / ${Runtime.getRuntime().availableProcessors()} 核")
 
             while (running || pending.isNotEmpty()) {
                 val segment = try {
@@ -187,11 +192,18 @@ class VadAsrRunner(
     }
 
     private fun transcribe(recognizer: OfflineRecognizer, segment: SpeechSegment): String {
+        val started = SystemClock.elapsedRealtime()
         val stream = recognizer.createStream()
         return try {
             stream.acceptWaveform(segment.samples, AsrConstants.SAMPLE_RATE)
             recognizer.decode(stream)
-            recognizer.getResult(stream).text.trim()
+            val text = recognizer.getResult(stream).text.trim()
+
+            val audioMs = segment.samples.size * 1000L / AsrConstants.SAMPLE_RATE
+            val costMs = SystemClock.elapsedRealtime() - started
+            val rtf = if (audioMs > 0) costMs.toFloat() / audioMs else 0f
+            Log.i(TAG, "解码 ${audioMs}ms 音频用 ${costMs}ms (RTF=%.2f)，${text.length} 字".format(rtf))
+            text
         } finally {
             runCatching { stream.release() }
         }
@@ -205,6 +217,7 @@ class VadAsrRunner(
     }
 
     private companion object {
+        const val TAG = "VadAsr"
         const val VAD_ASSET = "models/vad/silero_vad.onnx"
 
         /** 太短的片段多半是咳嗽、碰麦，直接忽略（0.3 秒）。 */
