@@ -55,14 +55,14 @@ bash scripts/fetch-ja-model.sh   # 拉取并解压到 app/src/main/assets/models
 /data/data/com.looplooptech.audioscript/files/asr/ja-multi/
 ```
 
-需要 4 个文件（同一层，文件名保持原样即可）+ 一个空的 `.complete` 标记，且文件属主必须是应用 uid。已经有 root 的话，直接跑：
+需要 4 个文件（同一层，文件名保持原样即可）+ 一个空的 `.complete` 标记，且文件属主必须是应用 uid。在 Termux 里以普通用户运行（不要加 `su`，脚本会自己调用）：
 
 ```bash
 bash scripts/install-ja-model.sh /sdcard/Download/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10.tar.bz2
 # 也可以传已经解压的目录
 ```
 
-脚本会校验 sha256、给 decoder 打语言标签补丁、复制文件、改成应用 uid 并写入 `.complete`。装完重开应用，「设置 → 模型」会显示「已安装」，不需要重新编译或重装 APK。
+脚本会校验 sha256、给 decoder 打语言标签补丁、复制文件、改成应用 uid 并写入 `.complete`；`/sdcard` 读不到时会先用 `su` 复制一份到临时目录。装完重开应用，「设置 → 模型」会显示「已安装」，不需要重新编译或重装 APK。
 
 ### 用 CI 构建与校验
 

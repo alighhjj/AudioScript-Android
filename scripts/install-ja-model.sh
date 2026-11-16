@@ -26,15 +26,38 @@ SRC="${1:-}"
 die() { echo "错误：$*" >&2; exit 1; }
 sha() { sha256sum "$1" | awk '{print $1}'; }
 
+# 用 root 跑脚本时 PATH 会变短，command -v 找不到 Termux 里的 python3。
+find_python() {
+  command -v python3 2>/dev/null && return 0
+  for candidate in "${PREFIX:-}/bin/python3" /data/data/com.termux/files/usr/bin/python3 /usr/bin/python3; do
+    [ -x "$candidate" ] && { echo "$candidate"; return 0; }
+  done
+  return 1
+}
+PYTHON="$(find_python || true)"
+
 [ -n "$SRC" ] || die "用法：bash scripts/install-ja-model.sh <tar.bz2 或解压目录>"
-[ -e "$SRC" ] || die "找不到 $SRC"
-SRC="$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")"
+[ "$(id -u)" -ne 0 ] ||
+  die "请在 Termux 里以普通用户运行（不要加 su），脚本会自己调用 su 完成复制"
 
 command -v su >/dev/null 2>&1 && su -c true 2>/dev/null ||
   die "需要 root：请确认 su 可用（Magisk / KernelSU），或在电脑上用 adb 安装"
 
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/ja-model.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
+
+# /sdcard 经常因为没给 Termux 存储权限而读不到；用 su 复制一份到临时目录再按普通用户处理。
+if [ ! -r "$SRC" ]; then
+  su -c "test -e '$SRC'" 2>/dev/null || die "找不到 $SRC"
+  echo "==> Termux 读不到 $SRC，先用 su 复制一份"
+  su -c "cp -r '$SRC' '$STAGE/src' && chown -R $(id -u):$(id -g) '$STAGE/src'" ||
+    die "复制 $SRC 失败"
+  su -c "restorecon -R '$STAGE/src'" 2>/dev/null || true
+  SRC="$STAGE/src"
+fi
+
+[ -e "$SRC" ] || die "找不到 $SRC"
+SRC="$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")"
 
 if [ -d "$SRC" ]; then
   DIR="$SRC"
@@ -76,12 +99,12 @@ DECODER_CURRENT="$(sha "$DECODER")"
 if [ "$DECODER_CURRENT" = "$DECODER_PATCHED_SHA" ]; then
   echo "==> decoder 已带日文语言标签补丁"
 elif [ "$DECODER_CURRENT" = "$DECODER_SHA" ]; then
-  if command -v python3 >/dev/null 2>&1; then
+  if [ -n "$PYTHON" ]; then
     echo "==> 写入日文语言标签（<blk> embedding → <JA>）"
-    python3 "$ROOT/scripts/patch-ja-decoder.py" "$DECODER"
+    "$PYTHON" "$ROOT/scripts/patch-ja-decoder.py" "$DECODER"
     [ "$(sha "$DECODER")" = "$DECODER_PATCHED_SHA" ] || die "decoder 补丁后 sha256 不符"
   else
-    echo "! 没有 python3，跳过语言标签补丁：模型能用，但首帧上下文不是训练时的 <JA>" >&2
+    echo "! 没有找到 python3，跳过语言标签补丁：模型能用，但首帧上下文不是训练时的 <JA>" >&2
   fi
 else
   die "decoder sha256 不匹配（$DECODER_CURRENT）"
