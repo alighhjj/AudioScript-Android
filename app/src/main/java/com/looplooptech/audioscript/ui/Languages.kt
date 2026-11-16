@@ -3,7 +3,8 @@ package com.looplooptech.audioscript.ui
 /**
  * 语言列表。
  *
- * 识别端只有中英混说模型（内置 Zipformer），所以「源语言」只在中英之间选；
+ * 「源语言」决定识别模型：中文 / English 用内置中英混说模型，日本語 用可下载的
+ * 8 语种流式模型（见 [com.looplooptech.audioscript.core.ModelCatalog]）。
  * 「目标语言」跟随 ML Kit 本地翻译支持的语言。
  */
 object Languages {
@@ -13,6 +14,7 @@ object Languages {
     val source: List<Lang> = listOf(
         Lang("zh", "中文"),
         Lang("en", "English"),
+        Lang("ja", "日本語"),
     )
 
     val target: List<Lang> = listOf(

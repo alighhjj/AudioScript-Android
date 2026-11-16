@@ -13,7 +13,7 @@ import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
  * 流式识别器的创建参数，逐项对齐桌面端 `asr/streaming.rs`：
  * greedy_search、开启端点检测、rule1 固定 2.4 s，rule2 / rule3 跟随「口译 / 听写」档位。
  *
- * 模型路径是 assets 内的相对路径（见 [ModelStore]），由 native 层的 AssetManager 解析。
+ * 模型路径见 [ModelStore]：内置模型是 assets 相对路径，下载模型是 filesDir 绝对路径。
  */
 object RecognizerFactory {
 
@@ -46,7 +46,12 @@ object RecognizerFactory {
             decodingMethod = "greedy_search",
         )
 
-        return OnlineRecognizer(assetManager = context.assets, config = config)
+        return if (files.source == ModelSource.ASSET) {
+            OnlineRecognizer(assetManager = context.assets, config = config)
+        } else {
+            // assetManager 传 null（用默认值）时，AAR 内部走 newFromFile，读 filesDir 下的绝对路径。
+            OnlineRecognizer(config = config)
+        }
     }
 
     /**

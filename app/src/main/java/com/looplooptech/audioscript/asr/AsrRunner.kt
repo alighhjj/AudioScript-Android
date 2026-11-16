@@ -6,6 +6,7 @@ import com.k2fsa.sherpa.onnx.OnlineStream
 import com.looplooptech.audioscript.audio.PcmReader
 import com.looplooptech.audioscript.core.AsrConstants
 import com.looplooptech.audioscript.core.Hub
+import com.looplooptech.audioscript.core.ModelCatalog
 import com.looplooptech.audioscript.core.ModelStore
 import com.looplooptech.audioscript.core.RecognizerFactory
 import com.looplooptech.audioscript.core.RunStatus
@@ -48,11 +49,24 @@ class AsrRunner(
     private fun loop() {
         var stream: OnlineStream? = null
         try {
+            val cfg = Hub.settings.current
+            val spec = ModelCatalog.forLanguage(cfg.sourceLang)
+            if (!ModelStore.isInstalled(context, spec)) {
+                Hub.fail("${spec.label} 尚未下载，请到「设置 → 模型」下载后再开始")
+                onFatal()
+                return
+            }
+
             // 模型解包 + 加载：首次启动约 1~3 秒，这段时间界面显示「加载模型」
-            val files = ModelStore.ensure(context)
-            val recognizer = RecognizerFactory.create(context, files, Hub.settings.current.endpointProfile)
+            val files = ModelStore.ensure(context, spec)
+            val recognizer = RecognizerFactory.create(context, files, cfg.endpointProfile)
             this.recognizer = recognizer
             stream = recognizer.createStream()
+
+            // 日文中没有需要还原的英文大小写；中英模型才走 LatinCase。
+            val restoreCase = cfg.sourceLang != ModelCatalog.LANG_JA
+            fun clean(text: String): String =
+                if (restoreCase) LatinCase.restoreSentenceCase(text) else text
 
             Hub.beginUtterance(0L)
             Hub.setStatus(RunStatus.RUNNING)
@@ -89,14 +103,14 @@ class AsrRunner(
 
                 if (recognizer.isEndpoint(stream)) {
                     if (!pending.isNullOrBlank()) {
-                        Hub.emitFinal(LatinCase.restoreSentenceCase(pending.trim()), nowMs)
+                        Hub.emitFinal(clean(pending.trim()), nowMs)
                     }
                     recognizer.reset(stream)
                     Hub.beginUtterance(nowMs)
                     lastPartial = ""
                 } else if (pending != null && pending != lastPartial) {
                     lastPartial = pending
-                    Hub.emitPartial(LatinCase.restoreSentenceCase(pending.trim()), nowMs)
+                    Hub.emitPartial(clean(pending.trim()), nowMs)
                 }
             }
 

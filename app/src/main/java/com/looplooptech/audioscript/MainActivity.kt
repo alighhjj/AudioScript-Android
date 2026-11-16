@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.looplooptech.audioscript.core.Hub
+import com.looplooptech.audioscript.core.ModelCatalog
+import com.looplooptech.audioscript.core.ModelStore
 import com.looplooptech.audioscript.core.RunStatus
 import com.looplooptech.audioscript.core.SourceKind
 import com.looplooptech.audioscript.export.MarkdownExport
@@ -85,6 +87,7 @@ class MainActivity : ComponentActivity() {
                 val translationStatus by Hub.translationStatus.collectAsStateWithLifecycle()
                 val level by Hub.level.collectAsStateWithLifecycle()
                 val settings by Hub.settings.data.collectAsStateWithLifecycle()
+                val modelStates by Hub.models.states.collectAsStateWithLifecycle()
                 val notice by Hub.notice.collectAsStateWithLifecycle()
 
                 var showSettings by remember { mutableStateOf(false) }
@@ -104,13 +107,23 @@ class MainActivity : ComponentActivity() {
                     settings = settings,
                     onStart = { requestStart(settings.sourceKind) },
                     onStop = { CaptureService.stop(this@MainActivity) },
-                    onOpenSettings = { showSettings = true },
+                    onOpenSettings = {
+                        Hub.models.refresh()
+                        showSettings = true
+                    },
                     onSourceChange = { kind -> Hub.settings.update { it.copy(sourceKind = kind) } },
                     onTranslateToggle = { enabled ->
                         Hub.settings.update { it.copy(translateEnabled = enabled) }
                     },
                     onLanguagesChange = { src, tgt ->
                         Hub.settings.update { it.copy(sourceLang = src, targetLang = tgt) }
+                        if (src == ModelCatalog.LANG_JA &&
+                            !ModelStore.isInstalled(this@MainActivity, ModelCatalog.japanese)
+                        ) {
+                            Hub.setNotice("日文识别需要先下载日文模型，约 247 MB")
+                            Hub.models.refresh()
+                            showSettings = true
+                        }
                     },
                     onOverlayToggle = { toggleOverlay() },
                     onExport = { exportMarkdown() },
@@ -120,9 +133,14 @@ class MainActivity : ComponentActivity() {
                     SettingsSheet(
                         settings = settings,
                         overlayAllowed = overlayAllowed,
+                        modelStates = modelStates,
+                        canManageModels = status == RunStatus.IDLE,
                         onDismiss = { showSettings = false },
                         onUpdate = { block -> Hub.settings.update(block) },
                         onRequestOverlayPermission = { requestOverlayPermission() },
+                        onInstallModel = { Hub.models.install(it) },
+                        onCancelModel = { Hub.models.cancel(it) },
+                        onDeleteModel = { Hub.models.uninstall(it) },
                         onExport = {
                             showSettings = false
                             exportMarkdown()
@@ -151,6 +169,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestStart(kind: SourceKind) {
+        val spec = ModelCatalog.forLanguage(Hub.settings.current.sourceLang)
+        if (!ModelStore.isInstalled(this, spec)) {
+            Hub.setNotice("${spec.label} 尚未下载：请到「设置 → 模型」下载后再开始")
+            return
+        }
+
         if (kind == SourceKind.SYSTEM && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             Hub.setNotice("系统声音采集需要 Android 10 及以上，这台设备请改用「麦克风」")
             return

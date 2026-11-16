@@ -2,7 +2,7 @@ package com.looplooptech.audioscript.export
 
 import android.content.Context
 import android.content.Intent
-import com.looplooptech.audioscript.core.ModelStore
+import com.looplooptech.audioscript.core.ModelCatalog
 import com.looplooptech.audioscript.core.Segment
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -20,7 +20,7 @@ object MarkdownExport {
         builder.appendLine("# 声稿转写")
         builder.appendLine()
         builder.appendLine("- 导出时间：$stamp")
-        builder.appendLine("- 识别模型：${ModelStore.MODEL_LABEL}")
+        builder.appendLine("- 识别模型：${ModelCatalog.forLanguage(sourceLang).label}")
         builder.appendLine("- 语言：${languageLabel(sourceLang)} → ${languageLabel(targetLang)}")
         builder.appendLine("- 段落：${finals.size} 句")
         builder.appendLine()

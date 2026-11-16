@@ -25,6 +25,8 @@ object Hub {
         private set
     lateinit var settings: SettingsStore
         private set
+    lateinit var models: ModelManager
+        private set
 
     private val _segments = MutableStateFlow<List<Segment>>(emptyList())
     val segments: StateFlow<List<Segment>> = _segments.asStateFlow()
@@ -61,6 +63,8 @@ object Hub {
         initialized = true
         app = context.applicationContext
         settings = SettingsStore(app)
+        models = ModelManager(app)
+        models.refresh()
 
         scope.launch { translationLoop() }
         scope.launch { overlayLoop() }

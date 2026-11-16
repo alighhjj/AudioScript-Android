@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class SettingsData(
     val sourceKind: SourceKind = SourceKind.SYSTEM,
-    /** 识别语言：内置 Zipformer 为中英混说模型，这里只影响翻译的源语言。 */
+    /** 识别语言：同时决定使用哪个识别模型（中文 / 英文用内置模型，日文用可下载模型）。 */
     val sourceLang: String = "zh",
     val targetLang: String = "en",
     val translateEnabled: Boolean = true,

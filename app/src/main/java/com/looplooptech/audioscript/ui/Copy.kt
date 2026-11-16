@@ -14,7 +14,7 @@ object Copy {
     const val EmptyTitle = "让语言不再是一道坎"
     const val EmptyBody = "监听手机正在播放的声音，外语播客、视频与会议实时变成原文 + 译文双语字幕。识别与翻译都在本机完成。"
     const val EmptyBullet1 = "100% 本机识别与翻译，音频不上传"
-    const val EmptyBullet2 = "内置中英混说模型，首次启动无需联网"
+    const val EmptyBullet2 = "内置中英混说模型；日文模型可在设置里按需下载"
     const val EmptyBullet3 = "悬浮字幕锁屏穿透，不挡你看视频"
 
     const val SourceSystem = "系统声音"
@@ -45,6 +45,6 @@ object Copy {
 
     const val ModelTitle = "模型"
     const val AboutTitle = "关于"
-    const val AboutBody = "本应用由 AudioScript 声稿（MIT）桌面版移植：识别沿用同一份 Zipformer 中英模型与 sherpa-onnx 推理引擎；翻译在本机运行 ML Kit 本地模型。"
+    const val AboutBody = "本应用由 AudioScript 声稿（MIT）桌面版移植：识别沿用 sherpa-onnx 推理引擎，中英模型随安装包内置，日文模型可按需下载；翻译在本机运行 ML Kit 本地模型。"
     const val Repo = "github.com/niyongsheng/AudioScript"
 }
